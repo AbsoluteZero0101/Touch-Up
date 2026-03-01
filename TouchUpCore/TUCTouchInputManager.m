@@ -130,7 +130,8 @@
     if(touch.previousPhase != NSTouchPhaseEnded && !isNewTouch) {
         // update to an existing touch... check if stationary or not
         CGFloat digitizerRelDistance = sqrt(pow(touch.location.x - touch.previousLocation.x, 2) + pow(touch.location.y - touch.previousLocation.y, 2));
-        CGFloat screenSize = [self touchscreen].physicalSize.width;
+        TUCScreen *screen = [self touchscreen];
+        CGFloat screenSize = screen ? screen.physicalSize.width : 300.0; // fallback ~12" display
         BOOL isStationary = (digitizerRelDistance * screenSize) < 0.1;
 //        BOOL isStationary = CGPointEqualToPoint(touch.location, touch.previousLocation);
         
@@ -478,12 +479,16 @@
     __weak id weakSelf = self;
     NSUUID *uuid = touch.uuid;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 2), dispatch_get_main_queue(), ^{
-        for(TUCTouch *touch in [weakSelf touchSet]) {
-            if (touch.uuid == uuid && [[weakSelf touchSet] containsObject:touch]) {
-                [[weakSelf touchSet] removeObject:touch];
-                [[weakSelf delegate] touchesDidChange];
-                return;
+        TUCTouch *touchToRemove = nil;
+        for (TUCTouch *t in [weakSelf touchSet]) {
+            if ([t.uuid isEqual:uuid]) {
+                touchToRemove = t;
+                break;
             }
+        }
+        if (touchToRemove) {
+            [[weakSelf touchSet] removeObject:touchToRemove];
+            [[weakSelf delegate] touchesDidChange];
         }
     });
 }
@@ -586,9 +591,11 @@
     
     CFArrayRef array;
     array = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly|kCGWindowListExcludeDesktopElements, kCGNullWindowID);
-    
-//    NSLog(@"%@", array);
-    
+
+    if (!array) {
+        return NO;
+    }
+
     BOOL behindFrontmostWindow = NO;
     
     // propagate through window list the structure of this array is as follows:
