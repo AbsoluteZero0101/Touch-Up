@@ -208,6 +208,10 @@ void IdentifyElements(IOHIDElementRef anyElement, Boolean printTree) {
     
     
     CFArrayRef children = IOHIDElementGetChildren(applicationCollection);
+    if (!children) {
+        printf("# applicationCollection has no children, skipping element identification\n");
+        return;
+    }
     CFIndex numChildren = CFArrayGetCount(children);
     
     if (printTree) {
@@ -229,6 +233,7 @@ void IdentifyElements(IOHIDElementRef anyElement, Boolean printTree) {
             if (printTree) {
                 printf(" > Logical collection %ld\n", i);
                 CFArrayRef grandchildren = IOHIDElementGetChildren(element);
+                if (!grandchildren) continue;
                 for( CFIndex j=0; j<CFArrayGetCount(grandchildren); j++) {
                     IOHIDElementRef gch = (IOHIDElementRef)CFArrayGetValueAtIndex(grandchildren, j);
                     CFIndex page = IOHIDElementGetUsagePage(gch);
@@ -275,7 +280,8 @@ void IdentifyElements(IOHIDElementRef anyElement, Boolean printTree) {
 
 void PrintTouchCollection(IOHIDElementRef collection) {
     CFArrayRef children = IOHIDElementGetChildren(collection);
-    
+    if (!children) return;
+
     // get stored values of all touches
     for (CFIndex i=0; i<CFArrayGetCount(children); i++) {
         IOHIDElementRef element = (IOHIDElementRef)CFArrayGetValueAtIndex(children, i);
@@ -331,8 +337,9 @@ void PrintTouchCollection(IOHIDElementRef collection) {
  */
 
 void DispatchTouchDataForCollection(IOHIDElementRef collection) {
-    
+
     CFArrayRef children = IOHIDElementGetChildren(collection);
+    if (!children) return;
 
     CGFloat x = -1;
     CGFloat y = -1;
