@@ -306,8 +306,9 @@ extension TouchUp: TUCTouchDelegate {
                 self.connectionState = .uncertain
             }
         }
-        
+
         self.identifyPreferredOrNoScreen()
+        self.rememeberCues()
     }
     
     func touchscreenDidDisconnect() {

@@ -187,15 +187,18 @@ void StoreInputValue(IOHIDValueRef hidValue) {
  Just pass in any element of the tree, the function will walk up the tree, search for the logical groups and rememeber them in the global variables.
  */
 void IdentifyElements(IOHIDElementRef anyElement, Boolean printTree) {
-    
+
     IOHIDElementRef applicationCollection = anyElement;
-    IOHIDElementType type = kIOHIDElementTypeOutput;
-    
-    while (type != kIOHIDElementCollectionTypeApplication) {
+
+    // Walk up the element tree to find the Application Collection root
+    while (1) {
         IOHIDElementRef next = IOHIDElementGetParent(applicationCollection);
         if (next) {
             applicationCollection = next;
-            type = IOHIDElementGetType(applicationCollection);
+            if (IOHIDElementGetType(applicationCollection) == kIOHIDElementTypeCollection
+                && IOHIDElementGetCollectionType(applicationCollection) == kIOHIDElementCollectionTypeApplication) {
+                break;
+            }
         } else {
             break;
         }
@@ -208,7 +211,7 @@ void IdentifyElements(IOHIDElementRef anyElement, Boolean printTree) {
     CFIndex numChildren = CFArrayGetCount(children);
     
     if (printTree) {
-        printf("# parent (type %u) has %ld children:\n", type, numChildren);
+        printf("# parent has %ld children:\n", numChildren);
     }
     
     
@@ -475,20 +478,19 @@ static void Handle_InputValueCallback (
                 void *          inSender,       // the IOHIDManagerRef
                 IOHIDValueRef   inIOHIDValueRef // the new element value
 ) {
-    if(!gAreElementRefsSet) {
+    if (!gAreElementRefsSet) {
         IOHIDElementRef e = IOHIDValueGetElement(inIOHIDValueRef);
         IdentifyElements(e, TRUE);
         gAreElementRefsSet = 1;
     }
-    
-    IOHIDElementRef elem = IOHIDValueGetElement(inIOHIDValueRef);
-    
-    Boolean added = IOHIDQueueContainsElement(gQueue, elem);
-    if(!added) {
-        IOHIDQueueAddElement(gQueue, elem);
-        StoreInputValue(inIOHIDValueRef);
+
+    // Safety fallback: add any elements not yet in the queue
+    if (gQueue) {
+        IOHIDElementRef elem = IOHIDValueGetElement(inIOHIDValueRef);
+        if (!IOHIDQueueContainsElement(gQueue, elem)) {
+            IOHIDQueueAddElement(gQueue, elem);
+        }
     }
-    
 }
 
 
@@ -533,9 +535,27 @@ static void Handle_DeviceMatchingCallback(
         return;
     }
 
-    // Correct order: schedule with run loop BEFORE starting the queue
+    // Schedule and register callback BEFORE adding elements and starting
     IOHIDQueueScheduleWithRunLoop(queue, gRunLoopRef, kCFRunLoopCommonModes);
     IOHIDQueueRegisterValueAvailableCallback(queue, Handle_QueueValueAvailable, NULL);
+
+    // Discover all device elements upfront and add them to the queue
+    // before starting, so the first report is captured completely
+    CFArrayRef allElements = IOHIDDeviceCopyMatchingElements(inIOHIDDeviceRef, NULL, kIOHIDOptionsTypeNone);
+    if (allElements) {
+        CFIndex count = CFArrayGetCount(allElements);
+        if (count > 0) {
+            IOHIDElementRef firstElem = (IOHIDElementRef)CFArrayGetValueAtIndex(allElements, 0);
+            IdentifyElements(firstElem, TRUE);
+            gAreElementRefsSet = 1;
+        }
+        for (CFIndex i = 0; i < count; i++) {
+            IOHIDElementRef elem = (IOHIDElementRef)CFArrayGetValueAtIndex(allElements, i);
+            IOHIDQueueAddElement(queue, elem);
+        }
+        CFRelease(allElements);
+    }
+
     IOHIDQueueStart(queue);
     gQueue = queue;
 
